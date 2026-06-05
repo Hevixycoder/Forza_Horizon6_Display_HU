@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Forza Horizon 6 Fedélzeti Rendszer</title>
+    <!-- Tailwind CSS a gyors és gyönyörű formázáshoz -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome az ikonokhoz -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { background-color: #000; color: #fff; overflow: hidden; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .screen { position: absolute; inset: 0; transition: opacity 0.3s ease, transform 0.3s ease; display: none; opacity: 0; }
+        .screen.active { display: flex; opacity: 1; z-index: 10; }
+        
+        /* Glassmorphism effektek a CarPlay-hez */
+        .glass-panel { background: rgba(25, 30, 40, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glass-card { background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); }
+        
+        /* Gördítősáv elrejtése */
+        ::-webkit-scrollbar { display: none; }
+        
+        /* BMW Klíma panel gradiens */
+        .bmw-bottom-bar { background: linear-gradient(to bottom, #111, #000); border-top: 1px solid #222; }
+        .temp-line { height: 2px; width: 100%; background: linear-gradient(to right, #00aaff, #ff3300); margin-top: 5px; border-radius: 2px; }
+        
+        /* Hívás képernyő animáció */
+        .pulse-bg { animation: pulseBg 2s infinite; }
+        @keyframes pulseBg { 0% { box-shadow: 0 0 0 0 rgba(255, 45, 85, 0.4); } 70% { box-shadow: 0 0 0 20px rgba(255, 45, 85, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 45, 85, 0); } }
+
+        /* Térkép háttérképe (placeholder) */
+        .map-bg {
+            background-image: url('https://placehold.co/800x600/1a202c/3182ce?text=Forza+Horizon+6+Japan+Map');
+            background-size: cover;
+            background-position: center;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen">
+
+    <!-- Audio Lejátszó -->
+    <audio id="audio-player"></audio>
+
+    <!-- ==================== BMW KÉPERNYŐ ==================== -->
+    <div id="bmw-screen" class="screen active flex-col justify-between bg-gradient-to-br from-gray-900 to-black">
+        
+        <!-- BMW Felső sáv (Óra + Vezetési módok) -->
+        <div class="flex justify-between items-center p-6 w-full">
+            <div class="text-3xl font-light text-gray-300 tracking-wider clock-display">--:--</div>
+            
+            <!-- Vezetési módok sávja -->
+            <div class="flex bg-gray-800 rounded-full p-1 border border-gray-700">
+                <button class="drive-mode px-4 py-2 rounded-full text-sm font-semibold transition-all border-2 border-transparent text-gray-500 hover:text-gray-300" onclick="setDriveMode(this, 'Eco Pro')">ECO PRO</button>
+                <button id="default-mode" class="drive-mode px-4 py-2 rounded-full text-sm font-semibold transition-all border-2 border-transparent bg-gray-700 text-white" onclick="setDriveMode(this, 'Comfort')">COMFORT</button>
+                <button class="drive-mode px-4 py-2 rounded-full text-sm font-semibold transition-all border-2 border-transparent text-gray-500 hover:text-gray-300" onclick="setDriveMode(this, 'Sport')">SPORT</button>
+                <button class="drive-mode px-4 py-2 rounded-full text-sm font-semibold transition-all border-2 border-transparent text-gray-500 hover:text-gray-300" onclick="setDriveMode(this, 'Sport+')">SPORT+</button>
+                <button class="drive-mode px-4 py-2 rounded-full text-sm font-semibold transition-all border-2 border-transparent text-gray-500 hover:text-gray-300" onclick="setDriveMode(this, 'Race')">RACE</button>
+            </div>
+            
+            <div class="text-xl text-gray-400"><i class="fa-solid fa-wifi"></i> <i class="fa-solid fa-battery-full ml-2"></i></div>
+        </div>
+
+        <!-- BMW Középső rész -->
+        <div class="flex-1 flex flex-col items-center justify-center gap-8">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-8 rounded-3xl border border-gray-700 text-center w-64 shadow-2xl relative overflow-hidden">
+                <div class="absolute inset-0 bg-orange-500/5"></div>
+                <div class="text-gray-400 text-sm uppercase tracking-widest mb-4">Olajhőfok</div>
+                <div class="text-7xl font-bold text-orange-500 drop-shadow-lg"><span id="oil-temp">60</span><span class="text-3xl text-gray-500">°C</span></div>
+            </div>
+            
+            <button onclick="navTo('carplay-home')" class="mt-8 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-10 rounded-full shadow-[0_0_20px_rgba(37,99,235,0.5)] transition-all text-xl flex items-center gap-3">
+                <i class="fa-brands fa-apple text-2xl"></i> Apple CarPlay
+            </button>
+        </div>
+
+        <!-- BMW Alsó sáv (Klíma panel) -->
+        <div class="bmw-bottom-bar h-24 w-full flex items-center justify-between px-10">
+            <div class="flex flex-col items-center">
+                <div class="flex items-center gap-6">
+                    <button onclick="adjTemp('left', -0.5)" class="text-3xl text-gray-400 hover:text-blue-400 transition">-</button>
+                    <div class="text-3xl font-light w-24 text-center"><span id="temp-left">21.5</span>°</div>
+                    <button onclick="adjTemp('left', 0.5)" class="text-3xl text-gray-400 hover:text-red-400 transition">+</button>
+                </div>
+                <div class="temp-line"></div>
+            </div>
+            <div class="flex gap-8 text-2xl text-gray-400">
+                <i class="fa-solid fa-music hover:text-white transition cursor-pointer"></i>
+                <i class="fa-solid fa-fan text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] cursor-pointer"></i>
+                <i class="fa-solid fa-house hover:text-white transition cursor-pointer"></i>
+                <i class="fa-solid fa-phone hover:text-white transition cursor-pointer"></i>
+            </div>
+            <div class="flex flex-col items-center">
+                <div class="flex items-center gap-6">
+                    <button onclick="adjTemp('right', -0.5)" class="text-3xl text-gray-400 hover:text-blue-400 transition">-</button>
+                    <div class="text-3xl font-light w-24 text-center"><span id="temp-right">21.5</span>°</div>
+                    <button onclick="adjTemp('right', 0.5)" class="text-3xl text-gray-400 hover:text-red-400 transition">+</button>
+                </div>
+                <div class="temp-line"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== CARPLAY FELÜLET ==================== -->
+    <div id="carplay-wrapper" class="screen flex bg-gradient-to-br from-[#1c2b2d] to-[#0f1719]">
+        
+        <!-- CarPlay Dock (Középre igazított ikonokkal) -->
+        <div class="w-24 h-full glass-panel flex flex-col items-center py-6 border-r border-gray-700/50 z-20 shrink-0">
+            <div class="text-white font-semibold mb-1 clock-display text-lg">--:--</div>
+            <div class="text-green-400 text-xs tracking-widest flex gap-1"><i class="fa-solid fa-signal"></i> 5G</div>
+            
+            <!-- Ikonok középre húzása -->
+            <div class="flex-1 flex flex-col justify-center gap-6 w-full px-4">
+                <button onclick="navTo('carplay-home')" class="w-full aspect-square rounded-2xl bg-blue-500 text-white text-2xl flex items-center justify-center shadow-lg hover:scale-105 transition"><i class="fa-solid fa-border-all"></i></button>
+                <button onclick="navTo('carplay-radio')" class="w-full aspect-square rounded-2xl bg-[#ff2d55] text-white text-2xl flex items-center justify-center shadow-lg hover:scale-105 transition"><i class="fa-solid fa-radio"></i></button>
+                <button onclick="navTo('carplay-phone')" class="w-full aspect-square rounded-2xl bg-green-500 text-white text-2xl flex items-center justify-center shadow-lg hover:scale-105 transition"><i class="fa-solid fa-phone"></i></button>
+            </div>
+
+            <button onclick="navTo('bmw-screen')" class="mt-auto w-12 h-12 rounded-full border-2 border-white text-white flex items-center justify-center font-bold text-lg hover:bg-white hover:text-black transition">B</button>
+        </div>
+
+        <!-- CarPlay Tartalom -->
+        <div class="flex-1 relative overflow-hidden">
+            
+            <!-- 1. CarPlay HOME -->
+            <div id="carplay-home" class="absolute inset-0 p-4 flex gap-4 transition-opacity duration-300">
+                <!-- Bal: Térkép -->
+                <a href="https://mapgenie.io/forza-horizon-6/maps/japan" target="_blank" class="w-3/5 h-full rounded-3xl overflow-hidden relative shadow-xl map-bg block group cursor-pointer">
+                    <div class="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition duration-300"></div>
+                    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div class="glass-card rounded-2xl px-8 py-4 flex items-center gap-4 text-white shadow-2xl backdrop-blur-xl">
+                            <i class="fa-solid fa-location-arrow text-2xl text-blue-400"></i>
+                            <div class="text-3xl font-bold tracking-wide">Térkép megnyitása</div>
+                        </div>
+                    </div>
+                </a>
+
+                <!-- Jobb: Modulok -->
+                <div class="w-2/5 h-full flex flex-col gap-4">
+                    
+                    <!-- Játékidő Modul (Kisebb widget a navigáció helyén) -->
+                    <div class="h-24 rounded-3xl glass-card p-5 flex items-center gap-5 shadow-xl bg-blue-900/10">
+                        <div class="w-14 h-14 bg-blue-500 rounded-full flex items-center justify-center text-2xl shadow-lg">
+                            <i class="fa-solid fa-gamepad text-white"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-blue-300 uppercase tracking-widest font-bold mb-1">Játékidő</div>
+                            <div id="playtime-display" class="text-3xl font-bold text-white font-mono tracking-wider">00:00:00</div>
+                        </div>
+                    </div>
+
+                    <!-- RadioHub Modul -->
+                    <div class="flex-1 rounded-3xl glass-card p-5 flex flex-col justify-between shadow-xl cursor-pointer hover:bg-white/5 transition border-l-4 border-[#ff2d55] bg-[#ff2d55]/10" onclick="navTo('carplay-radio')">
+                        <div class="text-xs text-red-400 font-bold tracking-widest uppercase mb-2">RadioHub</div>
+                        <div class="flex gap-4 items-center flex-1">
+                            <img id="widget-logo" src="https://placehold.co/100x100/333/fff?text=Radio" class="w-16 h-16 rounded-xl object-cover shadow-md">
+                            <div class="flex-1 overflow-hidden">
+                                <div id="widget-title" class="text-white font-bold text-2xl truncate">Válassz rádiót!</div>
+                                <div id="widget-artist" class="text-gray-400 text-lg truncate">Kattints a megnyitáshoz</div>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center px-4 mt-2" onclick="event.stopPropagation()">
+                            <button class="text-white text-2xl hover:text-gray-300"><i class="fa-solid fa-backward-step"></i></button>
+                            <button onclick="togglePlay()" class="text-white text-4xl w-14 h-14 flex items-center justify-center rounded-full hover:bg-white/10 transition"><i id="widget-play-icon" class="fa-solid fa-play"></i></button>
+                            <button class="text-white text-2xl hover:text-gray-300"><i class="fa-solid fa-forward-step"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. CARPLAY RÁDIÓ APP (RadioHub) -->
+            <div id="carplay-radio" class="absolute inset-0 p-8 overflow-y-auto hidden opacity-0 transition-opacity duration-300">
+                <div class="flex items-center gap-4 mb-8">
+                    <div class="w-12 h-12 bg-[#ff2d55] rounded-xl flex items-center justify-center text-white text-2xl shadow-lg"><i class="fa-solid fa-radio"></i></div>
+                    <h1 class="text-4xl font-bold text-white">RadioHub</h1>
+                </div>
+                <div class="grid grid-cols-2 gap-4" id="radio-container">
+                    <!-- Javascript tölti fel -->
+                </div>
+            </div>
+
+            <!-- 3. CARPLAY TELEFON APP (Változatlan) -->
+            <div id="carplay-phone" class="absolute inset-0 p-8 flex hidden opacity-0 transition-opacity duration-300">
+                <!-- Numpad -->
+                <div class="w-1/2 flex flex-col items-center justify-center border-r border-white/10 pr-8">
+                    <div id="dial-display" class="text-4xl font-bold text-white mb-8 h-12 tracking-widest text-center w-full truncate"></div>
+                    <div class="grid grid-cols-3 gap-6 mb-8">
+                        <button onclick="dial('1')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">1</button>
+                        <button onclick="dial('2')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">2<span class="text-xs text-gray-400 font-normal">ABC</span></button>
+                        <button onclick="dial('3')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">3<span class="text-xs text-gray-400 font-normal">DEF</span></button>
+                        <button onclick="dial('4')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">4<span class="text-xs text-gray-400 font-normal">GHI</span></button>
+                        <button onclick="dial('5')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">5<span class="text-xs text-gray-400 font-normal">JKL</span></button>
+                        <button onclick="dial('6')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">6<span class="text-xs text-gray-400 font-normal">MNO</span></button>
+                        <button onclick="dial('7')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">7<span class="text-xs text-gray-400 font-normal">PQRS</span></button>
+                        <button onclick="dial('8')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">8<span class="text-xs text-gray-400 font-normal">TUV</span></button>
+                        <button onclick="dial('9')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">9<span class="text-xs text-gray-400 font-normal">WXYZ</span></button>
+                        <button onclick="dial('*')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">*</button>
+                        <button onclick="dial('0')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">0<span class="text-xs text-gray-400 font-normal">+</span></button>
+                        <button onclick="dial('#')" class="w-20 h-20 rounded-full glass-card text-3xl font-semibold text-white flex flex-col items-center justify-center hover:bg-white/20 active:bg-white/30">#</button>
+                    </div>
+                    <div class="flex gap-8">
+                        <button onclick="startCall()" class="w-20 h-20 rounded-full bg-green-500 text-white text-3xl shadow-lg shadow-green-500/30 flex items-center justify-center hover:bg-green-400 transition"><i class="fa-solid fa-phone"></i></button>
+                        <button onclick="deleteDial()" class="w-20 h-20 rounded-full text-gray-400 text-2xl flex items-center justify-center hover:bg-white/10 transition"><i class="fa-solid fa-delete-left"></i></button>
+                    </div>
+                </div>
+                <!-- Előzmények -->
+                <div class="w-1/2 pl-8 flex flex-col">
+                    <h2 class="text-2xl font-bold text-white mb-6">Előzmények</h2>
+                    <div id="call-history-list" class="flex-1 overflow-y-auto flex flex-col gap-4">
+                        <div class="text-gray-500 italic mt-4">Nincsenek korábbi hívások.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AKTÍV HÍVÁS KÉPERNYŐ -->
+            <div id="carplay-active-call" class="absolute inset-0 bg-gradient-to-b from-[#1a2b3c] to-[#0a1118] flex flex-col items-center justify-center hidden opacity-0 transition-opacity duration-300 z-50">
+                <div class="w-40 h-40 rounded-full mb-6 bg-gray-700 border-4 border-gray-600 overflow-hidden flex items-center justify-center shadow-2xl relative">
+                    <div class="text-7xl">👱🏼‍♀️</div>
+                </div>
+                <h2 id="calling-name" class="text-5xl font-light text-white mb-2">Ismeretlen</h2>
+                <div id="call-timer" class="text-xl text-gray-400 font-mono mb-16">00:00</div>
+                <div class="flex gap-10">
+                    <div class="flex flex-col items-center gap-2">
+                        <button class="w-16 h-16 rounded-full glass-card text-white text-xl flex items-center justify-center hover:bg-white/20"><i class="fa-solid fa-microphone-slash"></i></button>
+                        <span class="text-sm text-gray-400">Némítás</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2">
+                        <button onclick="endCall()" class="w-20 h-20 rounded-full bg-red-500 text-white text-3xl flex items-center justify-center pulse-bg hover:bg-red-400 shadow-lg shadow-red-500/50"><i class="fa-solid fa-phone-slash"></i></button>
+                        <span class="text-sm text-gray-400">Befejezés</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2">
+                        <button class="w-16 h-16 rounded-full glass-card text-white text-xl flex items-center justify-center hover:bg-white/20"><i class="fa-solid fa-volume-high"></i></button>
+                        <span class="text-sm text-gray-400">Hangszóró</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- ÁLLAPOT VÁLTOZÓK ---
+        let leftTemp = 21.5;
+        let rightTemp = 21.5;
+        let currentRadio = null;
+        let isPlaying = false;
+        let isMusicPausedForCall = false;
+        let dialInput = "";
+        let callHistory = [];
+        let callInterval = null;
+        let callSeconds = 0;
+        
+        // Olajhőfok és Játékidő változók
+        let currentOilTemp = 60;
+        let targetOilTemp = 90;
+        const startSessionTime = Date.now(); // Játékidő mérés kezdete
+
+        const audioPlayer = document.getElementById('audio-player');
+        
+        // Rádió lista adatai
+        const radios = [
+            { name: "Rádió 1", url: "https://icast.connectmedia.hu/5201/live.mp3", img: "https://static.mytuner.mobi/media/tvos_radios/117/radio-1.b688737f.png" },
+            { name: "SLAM! NON STOP", url: "https://29003.live.streamtheworld.com/WEB10_MP3_SC", img: "https://www.radio.net/175/slamnonstop.png?version=e3c46c02ecb39be6ae5b4ef821d63a0b945c3a22" },
+            { name: "SLAM WKNDMX", url: "https://28983.live.streamtheworld.com/WEB11_MP3_SC", img: "https://www.radio.net/175/slamhardstyle.jpeg?version=e5e710f41d11592f3ded6df95488ea199237d06b" },
+            { name: "COOL FM", url: "https://mediagw.e-tiger.net/stream/zc20", img: "https://myonlineradio.hu/public/uploads/radio_img/coolfm/play_250_250.webp" },
+            { name: "Retro Rádió", url: "https://icast.connectmedia.hu/5002/live.mp3", img: "https://myonlineradio.hu/public/uploads/radio_img/retro-radio/play_250_250.webp" },
+            { name: "OZONE FM", url: "https://oxygenmusic.hu:8443/ozonefm_128", img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS4EZWEx35YHndVOV5nuEvRrO3OxOsrU4KqvA&s" }
+        ];
+
+        // --- INICIALIZÁLÁS ---
+        function init() {
+            updateClock();
+            setInterval(updateClock, 1000);
+            
+            // Játékidő és Olajhőfok frissítő ciklus
+            updatePlaytime();
+            setInterval(updatePlaytime, 1000);
+            setInterval(updateOilTemp, 2000);
+            
+            renderRadios();
+            
+            // Web Media Session Dummy Fallback
+            if ('mediaSession' in navigator) {
+                // Csak jelzésértékű, mivel cross-origin alkalmazások adatait nem olvashatjuk natívan
+                navigator.mediaSession.setActionHandler('play', () => togglePlay());
+                navigator.mediaSession.setActionHandler('pause', () => togglePlay());
+            }
+        }
+
+        // --- ALAP FUNKCIÓK ---
+        function updateClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' });
+            document.querySelectorAll('.clock-display').forEach(el => el.textContent = timeString);
+        }
+
+        function updatePlaytime() {
+            const elapsedMs = Date.now() - startSessionTime;
+            const totalSeconds = Math.floor(elapsedMs / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            
+            document.getElementById('playtime-display').textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function updateOilTemp() {
+            // Cél hőmérséklet véletlenszerű ugrálása 80 és 110 között a bemelegedés után
+            if (Math.random() < 0.2) {
+                targetOilTemp = 80 + Math.random() * 30;
+            }
+            // Fokozatos közeledés a célhoz (szimulált tehetetlenség)
+            currentOilTemp += (targetOilTemp - currentOilTemp) * 0.1;
+            // Véletlenszerű vibrálás
+            currentOilTemp += (Math.random() - 0.5) * 1.5;
+            // 60 és 110 fok közé szorítás
+            currentOilTemp = Math.max(60, Math.min(110, currentOilTemp));
+            
+            document.getElementById('oil-temp').textContent = Math.round(currentOilTemp);
+        }
+
+        function navTo(screenId) {
+            if(screenId === 'bmw-screen') {
+                document.getElementById('carplay-wrapper').classList.remove('active');
+                document.getElementById('bmw-screen').classList.add('active');
+            } else {
+                document.getElementById('bmw-screen').classList.remove('active');
+                document.getElementById('carplay-wrapper').classList.add('active');
+                
+                const cpScreens = ['carplay-home', 'carplay-radio', 'carplay-phone'];
+                cpScreens.forEach(id => {
+                    const el = document.getElementById(id);
+                    if(id === screenId) {
+                        el.classList.remove('hidden');
+                        setTimeout(() => el.classList.remove('opacity-0'), 10);
+                    } else {
+                        el.classList.add('opacity-0');
+                        setTimeout(() => el.classList.add('hidden'), 300);
+                    }
+                });
+            }
+        }
+
+        // --- BMW FUNKCIÓK ---
+        function setDriveMode(btn, mode) {
+            // Összes gomb alaphelyzetbe
+            document.querySelectorAll('.drive-mode').forEach(el => {
+                el.className = 'drive-mode px-4 py-2 rounded-full text-sm font-semibold transition-all border-2 border-transparent text-gray-500 hover:text-gray-300';
+            });
+            
+            // Színosztályok beállítása a választott mód alapján
+            let activeClasses = '';
+            if (mode === 'Eco Pro') {
+                activeClasses = 'border-green-500 text-green-400 shadow-[0_0_15px_rgba(34,197,94,0.4)] bg-green-900/20';
+            } else if (mode === 'Comfort') {
+                activeClasses = 'bg-gray-700 text-white'; // Sima, extra ragyogás nélkül
+            } else if (mode === 'Sport') {
+                activeClasses = 'border-red-500 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] bg-red-900/20';
+            } else if (mode === 'Sport+') {
+                activeClasses = 'border-red-700 text-red-700 shadow-[0_0_15px_rgba(185,28,28,0.6)] bg-red-950/40';
+            } else if (mode === 'Race') {
+                activeClasses = 'border-blue-800 text-blue-400 shadow-[0_0_15px_rgba(30,58,138,0.6)] bg-blue-900/30';
+            }
+
+            btn.className = `drive-mode px-4 py-2 rounded-full text-sm font-semibold transition-all ${activeClasses}`;
+        }
+
+        function adjTemp(side, amount) {
+            if (side === 'left') {
+                leftTemp = Math.max(16, Math.min(28, leftTemp + amount));
+                document.getElementById('temp-left').textContent = leftTemp.toFixed(1);
+            } else {
+                rightTemp = Math.max(16, Math.min(28, rightTemp + amount));
+                document.getElementById('temp-right').textContent = rightTemp.toFixed(1);
+            }
+        }
+
+        // --- RADIOHUB FUNKCIÓK ---
+        function renderRadios() {
+            const container = document.getElementById('radio-container');
+            container.innerHTML = '';
+            radios.forEach((radio, index) => {
+                const isCurrent = currentRadio && currentRadio.url === radio.url;
+                const playingClass = (isCurrent && isPlaying) ? 'border-red-500 bg-white/20' : 'border-transparent glass-card';
+                
+                container.innerHTML += `
+                    <div onclick="selectRadio(${index})" class="rounded-2xl p-4 flex items-center gap-4 cursor-pointer transition-all border-2 ${playingClass} hover:bg-white/10">
+                        <img src="${radio.img}" class="w-20 h-20 rounded-xl object-cover bg-white">
+                        <div class="flex-1">
+                            <div class="text-xl font-bold text-white mb-1">${radio.name}</div>
+                            <div class="text-sm text-gray-400">${(isCurrent && isPlaying) ? '<i class="fa-solid fa-volume-high text-red-400"></i> Élő adás' : 'OnlineRadio'}</div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function selectRadio(index) {
+            const radio = radios[index];
+            if (currentRadio && currentRadio.url === radio.url) {
+                togglePlay();
+            } else {
+                currentRadio = radio;
+                audioPlayer.src = radio.url;
+                audioPlayer.play();
+                isPlaying = true;
+                updateAudioUI();
+                setMediaSessionMetadata(radio);
+            }
+            renderRadios();
+        }
+
+        function togglePlay() {
+            if (!currentRadio) return selectRadio(0);
+            
+            if (isPlaying) {
+                audioPlayer.pause();
+                isPlaying = false;
+            } else {
+                audioPlayer.play();
+                isPlaying = true;
+            }
+            updateAudioUI();
+            renderRadios();
+        }
+
+        function updateAudioUI() {
+            if (currentRadio) {
+                document.getElementById('widget-title').textContent = currentRadio.name;
+                document.getElementById('widget-artist').textContent = "RadioHub Élő";
+                document.getElementById('widget-logo').src = currentRadio.img;
+            }
+            const icon = document.getElementById('widget-play-icon');
+            if (isPlaying) {
+                icon.classList.remove('fa-play');
+                icon.classList.add('fa-pause');
+            } else {
+                icon.classList.remove('fa-pause');
+                icon.classList.add('fa-play');
+            }
+        }
+        
+        function setMediaSessionMetadata(radio) {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: radio.name,
+                    artist: 'RadioHub - Forza Dashboard',
+                    artwork: [{ src: radio.img, sizes: '512x512', type: 'image/png' }]
+                });
+            }
+        }
+
+        // --- TELEFON FUNKCIÓK ---
+        function updateDialDisplay() {
+            document.getElementById('dial-display').textContent = dialInput;
+        }
+
+        function dial(char) {
+            if (dialInput.length < 15) {
+                dialInput += char;
+                updateDialDisplay();
+            }
+        }
+
+        function deleteDial() {
+            dialInput = dialInput.slice(0, -1);
+            updateDialDisplay();
+        }
+
+        function startCall() {
+            if (dialInput === "") return;
+
+            if (isPlaying) {
+                audioPlayer.pause();
+                isMusicPausedForCall = true;
+                isPlaying = false;
+                updateAudioUI();
+                renderRadios();
+            }
+
+            const callScreen = document.getElementById('carplay-active-call');
+            document.getElementById('calling-name').textContent = dialInput;
+            callScreen.classList.remove('hidden');
+            setTimeout(() => callScreen.classList.remove('opacity-0'), 10);
+
+            callSeconds = 0;
+            document.getElementById('call-timer').textContent = "Hívás felépítése...";
+            
+            setTimeout(() => {
+                callInterval = setInterval(() => {
+                    callSeconds++;
+                    const m = Math.floor(callSeconds / 60).toString().padStart(2, '0');
+                    const s = (callSeconds % 60).toString().padStart(2, '0');
+                    document.getElementById('call-timer').textContent = `${m}:${s}`;
+                }, 1000);
+            }, 1500);
+        }
+
+        function endCall() {
+            clearInterval(callInterval);
+            
+            callHistory.unshift({ number: dialInput, time: new Date().toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' }) });
+            renderHistory();
+            
+            const callScreen = document.getElementById('carplay-active-call');
+            callScreen.classList.add('opacity-0');
+            setTimeout(() => callScreen.classList.add('hidden'), 300);
+
+            dialInput = "";
+            updateDialDisplay();
+
+            if (isMusicPausedForCall && currentRadio) {
+                audioPlayer.play();
+                isPlaying = true;
+                isMusicPausedForCall = false;
+                updateAudioUI();
+                renderRadios();
+            }
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('call-history-list');
+            if (callHistory.length === 0) return;
+            
+            list.innerHTML = '';
+            callHistory.forEach(call => {
+                list.innerHTML += `
+                    <div class="glass-card rounded-xl p-4 flex justify-between items-center cursor-pointer hover:bg-white/10" onclick="dialInput='${call.number}'; updateDialDisplay();">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center text-white"><i class="fa-solid fa-phone"></i></div>
+                            <div>
+                                <div class="text-white font-bold text-lg">${call.number}</div>
+                                <div class="text-gray-400 text-sm">Kimenő hívás</div>
+                            </div>
+                        </div>
+                        <div class="text-gray-500">${call.time}</div>
+                    </div>
+                `;
+            });
+        }
+
+        // Program indítása
+        window.onload = init;
+
+    </script>
+</body>
+</html>
